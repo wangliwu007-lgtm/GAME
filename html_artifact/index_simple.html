@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>羽毛球明星2048</title>
+  <!-- Tailwind CSS v3 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Font Awesome -->
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#ff0000',
+            secondary: '#000000',
+            accent: '#ffffff',
+            'tile-bg': {
+              2: '#fff0f0',
+              4: '#ffd6d6',
+              8: '#ffadad',
+              16: '#ff8585',
+              32: '#ff5c5c',
+              64: '#ff3333',
+              128: '#ff0000',
+              256: '#cc0000',
+              512: '#990000',
+              1024: '#660000',
+              2048: '#330000'
+            }
+          },
+          fontFamily: {
+            'inter': ['Inter', 'sans-serif'],
+            'sans': ['Inter', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style type="text/tailwindcss">
+    @media (max-width: 640px) {
+      #game-board {
+        max-width: 90vw !important;
+        height: 90vw !important;
+        gap: 2px !important;
+        padding: 2px !important;
+      }
+      .game-container {
+        padding: 0.5rem !important;
+        touch-action: none;
+      }
+      .game-message .message {
+        font-size: 1.8rem !important;
+      }
+      .game-message .quote {
+        font-size: 1rem !important;
+      }
+      .game-message button {
+        font-size: 1rem !important;
+        padding: 0.5rem 1rem !important;
+        min-width: 120px;
+      }
+      h1 {
+        font-size: 2.5rem !important;
+      }
+      .main-content {
+        flex-direction: column !important;
+        align-items: center !important;
+      }
+      .control-section {
+        width: 90% !important;
+        max-width: 400px;
+        margin-top: 1rem;
+      }
+      /* 增大触摸区域 */
+      #undo-btn {
+        padding: 0.75rem 1rem !important;
+        font-size: 1.1rem !important;
+      }
+      /* 调整棋子内文字大小 */
+      .tile-inner .name {
+        font-size: 0.65rem !important;
+      }
+    }
+    
+    @layer utilities {
+      .text-shadow {
+        text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+      .text-shadow-lg {
+        text-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      }
+      .tile-inner {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        height: 100%;
+        border-radius: 0.5rem;
+        font-weight: bold;
+        z-index: 10;
+        transition: transform 0.15s ease, opacity 0.15s ease;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+      .tile-inner img {
+        width: 70%;
+        height: 70%;
+        object-fit: contain;
+        margin-bottom: 0.25rem;
+        opacity: 0;
+        transition: opacity 0.3s ease-in-out;
+      }
+      .tile-inner img.loaded {
+        opacity: 1;
+      }
+      .tile-inner .name {
+        font-size: 0.75rem;
+        font-family: 'Inter', sans-serif;
+        font-weight: 600;
+      }
+      .tile-merged .tile-inner {
+        animation: pop 0.2s ease-in-out;
+        z-index: 20;
+      }
+      @keyframes pop {
+        0% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.2);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+      @keyframes victoryAppear {
+        0% {
+          opacity: 0;
+          transform: scale(0.8) rotate(-5deg);
+          filter: blur(10px);
+        }
+        50% {
+          transform: scale(1.1) rotate(3deg);
+        }
+        100% {
+          opacity: 1;
+          transform: scale(1) rotate(0);
+          filter: blur(0);
+        }
+      }
+      .victory-card {
+        animation: victoryAppear 2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      }
+      .game-message {
+        display: none;
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 100;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        animation: fadeIn 0.5s ease-in-out;
+        border-radius: 0.5rem;
+      }
+      .game-message.game-won, .game-message.game-over {
+        display: flex;
+      }
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen font-inter">
+<div class="relative w-full min-h-screen overflow-hidden" style="min-height: 100vh; display: flex; flex-direction: column;">
+    <!-- 背景 -->
+    <div class="absolute inset-0 z-0">
+      <div class="absolute inset-0 bg-gradient-to-br from-red-700 to-black opacity-70"></div>
+    </div>
+
+    <!-- 主容器 -->
+    <div class="relative z-10 container mx-auto px-4 py-8 md:py-12 max-w-6xl flex-grow flex flex-col">
+      <!-- 标题区 -->
+      <header class="mb-8 text-center">
+        <div class="flex justify-center items-center relative">
+          <h1 class="text-4xl md:text-6xl font-inter text-white font-extrabold tracking-tight relative inline-block">
+            <span class="relative z-10">羽毛球明星2048</span>
+            <span class="absolute -bottom-2 left-0 w-full h-3 bg-yellow-400 transform -skew-x-12 opacity-70"></span>
+          </h1>
+          <div class="absolute right-0 md:right-auto md:left-full md:ml-4 top-0 transform md:translate-x-0 translate-x-16 -translate-y-4 bg-red-600 px-3 py-2 rounded-lg shadow-lg border-2 border-white">
+            <span class="text-xl font-inter text-white font-bold">BWF</span>
+          </div>
+        </div>
+        <p class="mt-6 text-xl text-white max-w-2xl mx-auto font-inter font-medium bg-black bg-opacity-30 py-3 px-6 rounded-lg shadow-lg border border-red-500">
+          轻移方向，合并同类，体验世界冠军的巅峰之路
+        </p>
+      </header>
+
+      <!-- 主要内容区 -->
+      <div class="flex flex-col md:flex-row justify-center items-start gap-8 mt-8 main-content">
+        <!-- 游戏棋盘区 -->
+        <div class="relative">
+          <div class="game-container bg-red-900 bg-opacity-80 rounded-lg p-4 shadow-lg border-4 border-black">
+            <div class="grid grid-cols-4 gap-3 bg-black bg-opacity-70 rounded-md p-3" id="game-board" style="width: 100%; max-width: 500px; height: 500px; margin: 0 auto; box-sizing: border-box;">
+              <!-- 棋盘格子将通过JS动态生成 -->
+            </div>
+
+            <!-- 分数区域 -->
+            <div class="flex justify-between mt-3 text-white">
+              <div class="flex flex-col items-center">
+                <span class="text-sm opacity-75 font-inter" style="font-weight: bold; font-size: 16px;">当前积分</span>
+                <span class="text-xl font-bold font-inter" id="score">0</span>
+              </div>
+              <div class="flex flex-col items-center">
+                <span class="text-sm opacity-75 font-inter" style="font-weight: bold; font-size: 16px;">最高积分</span>
+                <span class="text-xl font-bold font-inter" id="best-score">0</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 游戏结束/胜利消息 -->
+          <div class="game-message" id="game-message">
+            <div class="victory-card bg-white bg-opacity-95 p-8 rounded-lg shadow-2xl max-w-md border-4 border-red-600">
+              <div class="message text-3xl font-bold mb-6" id="message-text">恭喜获得世界冠军!</div>
+              <div class="quote text-xl mb-6" id="quote-text">每一次挥拍，都是向胜利的冲刺！</div>
+              <div class="flex gap-4 justify-center">
+                <button id="try-again-btn" class="bg-red-600 text-white hover:bg-opacity-80 px-6 py-3 rounded-lg text-lg font-bold">再来赛</button>
+                <button id="continue-btn" class="bg-black text-white hover:bg-gray-800 hidden px-6 py-3 rounded-lg text-lg font-bold">继续挑战</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧控制区 -->
+        <div class="w-full md:w-64 bg-white bg-opacity-20 rounded-lg p-6 shadow-xl control-section" style="min-height: 530px; align-self: flex-start; border: 2px solid rgba(255,255,255,0.3);">
+          <h2 class="text-2xl font-inter text-center mb-4 text-white font-bold">游戏控制</h2>
+
+          <!-- 操作提示 -->
+          <div class="mb-6 text-white">
+            <h3 class="font-bold mb-2">操作方式：</h3>
+            <ul class="list-disc pl-5">
+              <li>键盘方向键 ↑ ↓ ← →</li>
+              <li>或触摸滑动</li>
+            </ul>
+          </div>
+
+          <!-- 游戏说明 -->
+          <div class="mb-6 text-white">
+            <h3 class="font-bold mb-2">游戏规则：</h3>
+            <p>合并相同数字的棋子，直到获得2048即为胜利！</p>
+          </div>
+
+          <!-- 悔棋按钮 -->
+          <button id="undo-btn" class="mt-4 w-full bg-red-600 text-white py-2 px-4 rounded hover:bg-opacity-80 transition-colors font-inter">
+            <i class="fa fa-undo mr-2"></i>悔棋
+          </button>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // 球员配置表
+    const characterConfig = {
+      2: {
+        name: "韩悦",
+        description: "中国选手",
+        image: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MCIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDIwQzMzLjQ5IDIwIDIwIDMzLjQ5IDIwIDUwUzMzLjQ5IDgwIDUwIDgwUzgwIDY2LjUxIDgwIDUwUzY2LjUxIDIwIDUwIDIwWiIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDMwQzM4Ljk1IDMwIDMwIDM4Ljk1IDMwIDUwUzM4Ljk1IDcwIDUwIDcwUzgwIDYxLjA1IDgwIDUwUzYxLjA1IDMwIDUwIDMwWiIgZmlsbD0idHJhbnNmb3JtIi8+PC9zdmc+"
+      },
+      4: {
+        name: "乔纳坦",
+        description: "印尼选手",
+        image: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MCIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDIwQzMzLjQ5IDIwIDIwIDMzLjQ5IDIwIDUwUzMzLjQ5IDgwIDUwIDgwUzgwIDY2LjUxIDgwIDUwUzY2LjUxIDIwIDUwIDIwWiIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDMwQzM4Ljk1IDMwIDMwIDM4Ljk1IDMwIDUwUzM4Ljk1IDcwIDUwIDcwUzgwIDYxLjA1IDgwIDUwUzYxLjA1IDMwIDUwIDMwWiIgZmlsbD0idHJhbnNmb3JtIi8+PC9zdmc+"
+      },
+      8: {
+        name: "山口茜",
+        description: "日本选手",
+        image: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MCIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDIwQzMzLjQ5IDIwIDIwIDMzLjQ5IDIwIDUwUzMzLjQ5IDgwIDUwIDgwUzgwIDY2LjUxIDgwIDUwUzY2LjUxIDIwIDUwIDIwWiIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDMwQzM4Ljk1IDMwIDMwIDM4Ljk1IDMwIDUwUzM4Ljk1IDcwIDUwIDcwUzgwIDYxLjA1IDgwIDUwUzYxLjA1IDMwIDUwIDMwWiIgZmlsbD0idHJhbnNmb3JtIi8+PC9zdmc+"
+      },
+      16: {
+        name: "安东森",
+        description: "丹麦选手",
+        image: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MCIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDIwQzMzLjQ5IDIwIDIwIDMzLjQ5IDIwIDUwUzMzLjQ5IDgwIDUwIDgwUzgwIDY2LjUxIDgwIDUwUzY2LjUxIDIwIDUwIDIwWiIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDMwQzM4Ljk1IDMwIDMwIDM4Ljk1IDMwIDUwUzM4Ljk1IDcwIDUwIDcwUzgwIDYxLjA1IDgwIDUwUzYxLjA1IDMwIDUwIDMwWiIgZmlsbD0idHJhbnNmb3JtIi8+PC9zdmc+"
+      },
+      32: {
+        name: "王祉怡",
+        description: "中国选手",
+        image: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MCIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDIwQzMzLjQ5IDIwIDIwIDMzLjQ5IDIwIDUwUzMzLjQ5IDgwIDUwIDgwUzgwIDY2LjUxIDgwIDUwUzY2LjUxIDIwIDUwIDIwWiIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDMwQzM4Ljk1IDMwIDMwIDM4Ljk1IDMwIDUwUzM4Ljk1IDcwIDUwIDcwUzgwIDYxLjA1IDgwIDUwUzYxLjA1IDMwIDUwIDMwWiIgZmlsbD0idHJhbnNmb3JtIi8+PC9zdmc+"
+      },
+      64: {
+        name: "李诗沣",
+        description: "中国选手",
+        image: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MCIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDIwQzMzLjQ5IDIwIDIwIDMzLjQ5IDIwIDUwUzMzLjQ5IDgwIDUwIDgwUzgwIDY2LjUxIDgwIDUwUzY2LjUxIDIwIDUwIDIwWiIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDMwQzM4Ljk1IDMwIDMwIDM4Ljk1IDMwIDUwUzM4Ljk1IDcwIDUwIDcwUzgwIDYxLjA1IDgwIDUwUzYxLjA1IDMwIDUwIDMwWiIgZmlsbD0idHJhbnNmb3JtIi8+PC9zdmc+"
+      },
+      128: {
+        name: "昆拉武特",
+        description: "泰国选手",
+        image: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MCIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDIwQzMzLjQ5IDIwIDIwIDMzLjQ5IDIwIDUwUzMzLjQ5IDgwIDUwIDgwUzgwIDY2LjUxIDgwIDUwUzY2LjUxIDIwIDUwIDIwWiIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDMwQzM4Ljk1IDMwIDMwIDM4Ljk1IDMwIDUwUzM4Ljk1IDcwIDUwIDcwUzgwIDYxLjA1IDgwIDUwUzYxLjA1IDMwIDUwIDMwWiIgZmlsbD0idHJhbnNmb3JtIi8+PC9zdmc+"
+      },
+      256: {
+        name: "陈雨菲",
+        description: "中国选手",
+        image: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MCIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDIwQzMzLjQ5IDIwIDIwIDMzLjQ5IDIwIDUwUzMzLjQ5IDgwIDUwIDgwUzgwIDY2LjUxIDgwIDUwUzY2LjUxIDIwIDUwIDIwWiIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDMwQzM4Ljk1IDMwIDMwIDM4Ljk1IDMwIDUwUzM4Ljk1IDcwIDUwIDcwUzgwIDYxLjA1IDgwIDUwUzYxLjA1IDMwIDUwIDMwWiIgZmlsbD0idHJhbnNmb3JtIi8+PC9zdmc+"
+      },
+      512: {
+        name: "安洗莹",
+        description: "韩国选手",
+        image: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MCIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDIwQzMzLjQ5IDIwIDIwIDMzLjQ5IDIwIDUwUzMzLjQ5IDgwIDUwIDgwUzgwIDY2LjUxIDgwIDUwUzY2LjUxIDIwIDUwIDIwWiIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDMwQzM4Ljk1IDMwIDMwIDM4Ljk1IDMwIDUwUzM4Ljk1IDcwIDUwIDcwUzgwIDYxLjA1IDgwIDUwUzYxLjA1IDMwIDUwIDMwWiIgZmlsbD0idHJhbnNmb3JtIi8+PC9zdmc+"
+      },
+      1024: {
+        name: "石宇奇",
+        description: "中国选手",
+        image: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MCIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDIwQzMzLjQ5IDIwIDIwIDMzLjQ5IDIwIDUwUzMzLjQ5IDgwIDUwIDgwUzgwIDY2LjUxIDgwIDUwUzY2LjUxIDIwIDUwIDIwWiIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDMwQzM4Ljk1IDMwIDMwIDM4Ljk1IDMwIDUwUzM4Ljk1IDcwIDUwIDcwUzgwIDYxLjA1IDgwIDUwUzYxLjA1IDMwIDUwIDMwWiIgZmlsbD0idHJhbnNmb3JtIi8+PC9zdmc+"
+      },
+      2048: {
+        name: "世界冠军",
+        description: "终极目标",
+        image: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MCIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDIwQzMzLjQ5IDIwIDIwIDMzLjQ5IDIwIDUwUzMzLjQ5IDgwIDUwIDgwUzgwIDY2LjUxIDgwIDUwUzY2LjUxIDIwIDUwIDIwWiIgZmlsbD0idHJhbnNmb3JtIi8+PHBhdGggZD0iTTUwIDMwQzM4Ljk1IDMwIDMwIDM4Ljk1IDMwIDUwUzM4Ljk1IDcwIDUwIDcwUzgwIDYxLjA1IDgwIDUwUzYxLjA1IDMwIDUwIDMwWiIgZmlsbD0idHJhbnNmb3JtIi8+PC9zdmc+"
+      }
+    };
+
+    // 游戏核心逻辑
+    class Game2048 {
+      constructor() {
+        this.size = 4; // 4x4 棋盘
+        this.board = [];
+        this.score = 0;
+        this.bestScore = localStorage.getItem('bestScore') || 0;
+        this.previousState = null; // 用于悔棋
+        this.won = false;
+        this.over = false;
+
+        // 初始化DOM元素
+        this.gameBoard = document.getElementById('game-board');
+        this.scoreDisplay = document.getElementById('score');
+        this.bestScoreDisplay = document.getElementById('best-score');
+        this.gameMessage = document.getElementById('game-message');
+        this.messageText = document.getElementById('message-text');
+        this.quoteText = document.getElementById('quote-text');
+        this.tryAgainBtn = document.getElementById('try-again-btn');
+        this.continueBtn = document.getElementById('continue-btn');
+        this.undoBtn = document.getElementById('undo-btn');
+
+        // 初始化游戏
+        this.setup();
+
+        // 添加事件监听器
+        this.setupEventListeners();
+      }
+
+      // 初始化游戏
+      setup() {
+        console.log('游戏设置开始');
+        // 清空游戏数据
+        this.board = [];
+        this.score = 0;
+        this.previousState = null;
+        
+        // 创建棋盘格子
+        this.gameBoard.innerHTML = '';
+        this.gameBoard.style.gridTemplateColumns = `repeat(${this.size}, 1fr)`;
+
+        // 创建固定的格子元素
+        for (let i = 0; i < this.size * this.size; i++) {
+          const tile = document.createElement('div');
+          tile.className = 'bg-white bg-opacity-20 rounded-lg flex items-center justify-center';
+          this.gameBoard.appendChild(tile);
+        }
+
+        // 创建空棋盘数据
+        this.board = Array(this.size).fill().map(() => Array(this.size).fill(0));
+
+        // 更新分数显示
+        this.scoreDisplay.textContent = this.score;
+        this.bestScoreDisplay.textContent = this.bestScore;
+
+        // 随机放置两个初始棋子
+        this.addRandomTile();
+        this.addRandomTile();
+
+        // 渲染棋盘
+        this.renderBoard();
+
+        // 重置游戏状态
+        this.won = false;
+        this.over = false;
+        this.gameMessage.classList.remove('game-won', 'game-over');
+      }
+
+      // 保存当前前状态用于悔棋
+      saveState() {
+        this.previousState = {
+          board: JSON.parse(JSON.stringify(this.board)),
+          score: this.score
+        };
+      }
+
+      // 悔棋
+      undo() {
+        if (this.previousState) {
+          this.board = this.previousState.board;
+          this.score = this.previousState.score;
+          this.scoreDisplay.textContent = this.score;
+          this.renderBoard();
+          this.previousState = null; // 只能悔棋一次
+        }
+      }
+
+      // 添加随机棋子
+      addRandomTile() {
+        // 获取所有空格子
+        const emptyTiles = [];
+        for (let i = 0; i < this.size; i++) {
+          for (let j = 0; j < this.size; j++) {
+            if (this.board[i][j] === 0) {
+              emptyTiles.push({ x: i, y: j });
+            }
+          }
+        }
+
+        // 如果有空格子，随机选择一个并放置棋子
+        if (emptyTiles.length > 0) {
+          const randomTile = emptyTiles[Math.floor(Math.random() * emptyTiles.length)];
+          // 90%概率生成2，10%概率生成4
+          this.board[randomTile.x][randomTile.y] = Math.random() < 0.9 ? 2 : 4;
+          return true;
+        }
+        return false;
+      }
+
+      // 渲染棋盘
+      renderBoard() {
+        // 渲染每个格子
+        const tiles = this.gameBoard.children;
+
+        for (let i = 0; i < this.size; i++) {
+          for (let j = 0; j < this.size; j++) {
+            const index = i * this.size + j;
+            const value = this.board[i][j];
+            const tile = tiles[index];
+
+            if (value !== 0) {
+              // 获取或创建棋子内部元素
+              let tileInner = tile.querySelector('.tile-inner');
+              if (!tileInner) {
+                tileInner = document.createElement('div');
+                tileInner.className = 'tile-inner rounded-lg';
+                tile.appendChild(tileInner);
+              }
+
+              // 获取角色配置
+              const config = characterConfig[value];
+
+              // 设置棋子背景色
+              const bgColor = value <= 2048 ? `var(--tw-color-tile-bg-${value})` : '#330000';
+              tileInner.style.backgroundColor = bgColor;
+
+              // 获取或创建图片元素
+              let img = tileInner.querySelector('img');
+              if (!img) {
+                img = document.createElement('img');
+                img.alt = config.name;
+                tileInner.appendChild(img);
+              }
+
+              // 获取或创建名称元素
+              let name = tileInner.querySelector('.name');
+              if (!name) {
+                name = document.createElement('div');
+                name.className = 'name';
+                tileInner.appendChild(name);
+              }
+
+              // 设置图片
+              img.src = config.image;
+              img.onload = () => {
+                img.classList.add('loaded');
+              };
+              img.onerror = () => {
+                // 图片加载失败时显示默认文字
+                img.style.display = 'none';
+                name.textContent = value;
+              };
+
+              name.textContent = config.name;
+
+              // 显示棋子
+              tile.classList.remove('bg-white', 'bg-opacity-20');
+            } else {
+              // 清空内容
+              tile.innerHTML = '';
+              tile.className = 'bg-white bg-opacity-20 rounded-lg flex items-center justify-center';
+            }
+          }
+        }
+      }
+
+      // 移动棋子
+      move(direction) {
+        // 如果游戏已结束，不执行移动
+        if (this.over || this.won) return false;
+
+        // 保存当前状态用于悔棋
+        this.saveState();
+
+        // 创建一个副本用于比较移动前后的状态
+        const previousBoard = JSON.parse(JSON.stringify(this.board));
+        let moved = false;
+
+        // 根据方向执行移动
+        switch (direction) {
+          case 'up':
+            moved = this.moveUp();
+            break;
+          case 'right':
+            moved = this.moveRight();
+            break;
+          case 'down':
+            moved = this.moveDown();
+            break;
+          case 'left':
+            moved = this.moveLeft();
+            break;
+        }
+
+        // 如果有移动，添加新棋子并检查游戏状态
+        if (moved) {
+          this.addRandomTile();
+          this.renderBoard();
+          this.checkGameStatus();
+        } else {
+          // 如果没有移动，清除悔棋状态
+          this.previousState = null;
+        }
+
+        return moved;
+      }
+
+      // 向上移动
+      moveUp() {
+        let moved = false;
+
+        for (let j = 0; j < this.size; j++) {
+          for (let i = 1; i < this.size; i++) {
+            if (this.board[i][j] !== 0) {
+              let row = i;
+              while (row > 0 && this.board[row - 1][j] === 0) {
+                this.board[row - 1][j] = this.board[row][j];
+                this.board[row][j] = 0;
+                row--;
+                moved = true;
+              }
+
+              if (row > 0 && this.board[row - 1][j] === this.board[row][j]) {
+                this.board[row - 1][j] *= 2;
+                this.score += this.board[row - 1][j];
+                this.board[row][j] = 0;
+                moved = true;
+              }
+            }
+          }
+        }
+
+        if (moved) {
+          this.scoreDisplay.textContent = this.score;
+          this.updateBestScore();
+        }
+
+        return moved;
+      }
+
+      // 向右移动
+      moveRight() {
+        let moved = false;
+
+        for (let i = 0; i < this.size; i++) {
+          for (let j = this.size - 2; j >= 0; j--) {
+            if (this.board[i][j] !== 0) {
+              let col = j;
+              while (col < this.size - 1 && this.board[i][col + 1] === 0) {
+                this.board[i][col + 1] = this.board[i][col];
+                this.board[i][col] = 0;
+                col++;
+                moved = true;
+              }
+
+              if (col < this.size - 1 && this.board[i][col + 1] === this.board[i][col]) {
+                this.board[i][col + 1] *= 2;
+                this.score += this.board[i][col + 1];
+                this.board[i][col] = 0;
+                moved = true;
+              }
+            }
+          }
+        }
+
+        if (moved) {
+          this.scoreDisplay.textContent = this.score;
+          this.updateBestScore();
+        }
+
+        return moved;
+      }
+
+      // 向下移动
+      moveDown() {
+        let moved = false;
+
+        for (let j = 0; j < this.size; j++) {
+          for (let i = this.size - 2; i >= 0; i--) {
+            if (this.board[i][j] !== 0) {
+              let row = i;
+              while (row < this.size - 1 && this.board[row + 1][j] === 0) {
+                this.board[row + 1][j] = this.board[row][j];
+                this.board[row][j] = 0;
+                row++;
+                moved = true;
+              }
+
+              if (row < this.size - 1 && this.board[row + 1][j] === this.board[row][j]) {
+                this.board[row + 1][j] *= 2;
+                this.score += this.board[row + 1][j];
+                this.board[row][j] = 0;
+                moved = true;
+              }
+            }
+          }
+        }
+
+        if (moved) {
+          this.scoreDisplay.textContent = this.score;
+          this.updateBestScore();
+        }
+
+        return moved;
+      }
+
+      // 向左移动
+      moveLeft() {
+        let moved = false;
+
+        for (let i = 0; i < this.size; i++) {
+          for (let j = 1; j < this.size; j++) {
+            if (this.board[i][j] !== 0) {
+              let col = j;
+              while (col > 0 && this.board[i][col - 1] === 0) {
+                this.board[i][col - 1] = this.board[i][col];
+                this.board[i][col] = 0;
+                col--;
+                moved = true;
+              }
+
+              if (col > 0 && this.board[i][col - 1] === this.board[i][col]) {
+                this.board[i][col - 1] *= 2;
+                this.score += this.board[i][col - 1];
+                this.board[i][col] = 0;
+                moved = true;
+              }
+            }
+          }
+        }
+
+        if (moved) {
+          this.scoreDisplay.textContent = this.score;
+          this.updateBestScore();
+        }
+
+        return moved;
+      }
+
+      // 更新最高分
+      updateBestScore() {
+        if (this.score > this.bestScore) {
+          this.bestScore = this.score;
+          this.bestScoreDisplay.textContent = this.bestScore;
+          localStorage.setItem('bestScore', this.bestScore);
+        }
+      }
+
+      // 检查游戏状态
+      checkGameStatus() {
+        // 检查是否达成2048（胜利）
+        if (!this.won) {
+          for (let i = 0; i < this.size; i++) {
+            for (let j = 0; j < this.size; j++) {
+              if (this.board[i][j] === 2048) {
+                this.won = true;
+                this.messageText.textContent = '恭喜获得世界冠军!';
+                this.quoteText.textContent = '每一次挥拍，都是向胜利的冲刺！';
+                this.gameMessage.classList.add('game-won');
+                this.continueBtn.classList.remove('hidden');
+                return;
+              }
+            }
+          }
+        }
+
+        // 检查是否还有空格子
+        for (let i = 0; i < this.size; i++) {
+          for (let j = 0; j < this.size; j++) {
+            if (this.board[i][j] === 0) {
+              return; // 还有空格子，游戏继续
+            }
+          }
+        }
+
+        // 检查是否还有可合并的棋子
+        for (let i = 0; i < this.size; i++) {
+          for (let j = 0; j < this.size; j++) {
+            const value = this.board[i][j];
+
+            // 检查右侧
+            if (j < this.size - 1 && value === this.board[i][j + 1]) {
+              return; // 可以合并，游戏继续
+            }
+
+            // 检查下方
+            if (i < this.size - 1 && value === this.board[i + 1][j]) {
+              return; // 可以合并，游戏继续
+            }
+          }
+        }
+
+        // 没有空格子且没有可合并的棋子，游戏结束
+        this.over = true;
+        this.messageText.textContent = '挑战失败';
+        this.quoteText.textContent = '永不言弃，挑战极限！';
+        this.gameMessage.classList.add('game-over');
+        this.continueBtn.classList.add('hidden');
+      }
+
+      // 设置事件监听器
+      setupEventListeners() {
+        // 键盘控制
+        document.addEventListener('keydown', (e) => {
+          switch (e.key) {
+            case 'ArrowUp':
+              e.preventDefault();
+              this.move('up');
+              break;
+            case 'ArrowRight':
+              e.preventDefault();
+              this.move('right');
+              break;
+            case 'ArrowDown':
+              e.preventDefault();
+              this.move('down');
+              break;
+            case 'ArrowLeft':
+              e.preventDefault();
+              this.move('left');
+              break;
+          }
+        });
+
+        // 触摸控制
+        let touchStartX, touchStartY;
+        const gameContainer = document.querySelector('.game-container');
+
+        gameContainer.addEventListener('touchstart', (e) => {
+          touchStartX = e.touches[0].clientX;
+          touchStartY = e.touches[0].clientY;
+          e.preventDefault();
+        }, { passive: false });
+
+        gameContainer.addEventListener('touchmove', (e) => {
+          e.preventDefault();
+        }, { passive: false });
+
+        gameContainer.addEventListener('touchend', (e) => {
+          if (!touchStartX || !touchStartY) return;
+
+          const touchEndX = e.changedTouches[0].clientX;
+          const touchEndY = e.changedTouches[0].clientY;
+
+          const dx = touchEndX - touchStartX;
+          const dy = touchEndY - touchStartY;
+
+          // 最小滑动距离为50px
+          if (Math.abs(dx) > 50 || Math.abs(dy) > 50) {
+            if (Math.abs(dx) > Math.abs(dy)) {
+              // 水平滑动
+              this.move(dx > 0 ? 'right' : 'left');
+            } else {
+              // 垂直滑动
+              this.move(dy > 0 ? 'down' : 'up');
+            }
+          }
+
+          touchStartX = null;
+          touchStartY = null;
+          e.preventDefault();
+        }, { passive: false });
+
+        // 按钮事件
+        this.tryAgainBtn.addEventListener('click', () => {
+          this.setup();
+        });
+
+        this.continueBtn.addEventListener('click', () => {
+          this.gameMessage.classList.remove('game-won');
+          this.won = false;
+        });
+
+        // 悔棋按钮事件
+        this.undoBtn.addEventListener('click', () => {
+          this.undo();
+        });
+      }
+    }
+
+    // 初始化游戏
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('DOM 已加载，初始化游戏...');
+      try {
+        const game = new Game2048();
+        console.log('游戏初始化成功！');
+      } catch (error) {
+        console.error('游戏初始化失败:', error);
+        alert('游戏加载失败，请刷新页面重试！');
+      }
+    });
+  </script>
+
+</body></html>
